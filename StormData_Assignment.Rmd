@@ -1,0 +1,139 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+
+## Synopsis
+Storms in the U.S. cause significant damage, both in human and economic terms. Identification of the most damaging events could help direct the focus of our efforts to minimize the human and economic damages that result from these natural phenomena. The objective of this study was to determine which weather events warrant our focus. To that end, publicly available storm data were downloaded from the National Climatic Data Center. The data were imported and processed. Then for each weather event, the total number of fatalities and injuries and the economic cost in terms of property and crops (as well as the total cost) were calculated. The results indicate that tornadoes have the highest human cost, while flooding has the highest economic cost. Therefore, we should focus on minimizing the damages caused by these weather events.
+
+## Data Processing
+#### 1. Download and import data
+To download the file from source if not already present in working directory.
+```{r}
+library(tinytex)
+fileName <- "data.csv"
+zippedFileName <- paste(fileName, "bz2", sep = ".")
+if (!exists("rawData")) {
+        dataURL <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+        download.file(dataURL, zippedFileName)
+        rawData <- read.csv(zippedFileName, header = TRUE)
+}
+```
+#### 2. Subsetting the relevant Coulmns/data
+The data has 37 columns but as per requirement only 7 columns are relevant.
+EVTYPE: This column of event types contains 985 factors.
+
+FATALITIES: The number of deaths due to the event.
+INJURIES: The number of injuries due to the event.
+
+PROPDMG: The amount of property damage. The units of damage are in the following column.
+PROPDMGEXP: The units of property damage.
+
+CROPDMG: The amount of crop damage. The units of damage are in the following column.
+CROPDMGEXP: The units of crop damage.
+
+The following code subsets the raw data, extracting only the columns listed above.
+```{r}
+relevantColumns <- c("EVTYPE", 
+                     "FATALITIES", 
+                     "INJURIES", 
+                     "PROPDMG", 
+                     "PROPDMGEXP", 
+                     "CROPDMG", 
+                     "CROPDMGEXP")
+
+relevantData <- rawData[relevantColumns]
+```
+## To Calculate total property and crop damage
+Below code remap the factors in the appropriate units column to a numeric value and use the corresponding “amount of damage” column to calculate the total damage. This remapping the values required the use of the function “mapvalues” in the “dplyr” package.
+
+Total property damage (PROPDMGTOTAL, units = dollars) was calculated as follows:
+```{r}
+
+library(plyr)
+
+relevantData$PROPDMGEXP <- mapvalues(rawData$PROPDMGEXP, 
+     from = c("K", "M","", "B", "m", "+", "0", "5", "6", "?", "4", "2", "3", "h", "7", "H", "-", "1", "8"), 
+     to = c(10^3, 10^6, 1, 10^9, 10^6, 0,1,10^5, 10^6, 0, 10^4, 10^2, 10^3, 10^2, 10^7, 10^2, 0, 10, 10^8))
+
+relevantData$PROPDMGTOTAL <- as.numeric(as.character(relevantData$PROPDMGEXP)) * relevantData$PROPDMG
+```
+Total crop damage (CROPDMGTOTAL, units = dollars) was calculated as follows:
+```{r}
+relevantData$CROPDMGEXP <- mapvalues(rawData$CROPDMGEXP, 
+     from = c("","M", "K", "m", "B", "?", "0", "k","2"), 
+     to = c(1,10^6, 10^3, 10^6, 10^9, 0, 1, 10^3, 10^2))
+
+relevantData$CROPDMGTOTAL <- as.numeric(as.character(relevantData$CROPDMGEXP)) * relevantData$CROPDMG
+```
+The following code subsets the data once again because the columns used to calculate total damages are no longer needed.
+```{r}
+processedColumns <- c("EVTYPE", 
+                      "FATALITIES", 
+                      "INJURIES", 
+                      "PROPDMGTOTAL", 
+                      "CROPDMGTOTAL")
+processedData <- relevantData[processedColumns]
+```
+## Results
+### Below questions are analysed in code:
+#### Which events are the most harmful to human health?
+#### Which events result in the the most fatalities?
+The following code aggregates fatalities by event type and sorts based on the number of fatalities.
+```{r}
+fatalitiesByEvent <- aggregate(FATALITIES ~ EVTYPE, data = processedData, FUN = sum)
+orderedFatalities <- fatalitiesByEvent[order(-fatalitiesByEvent$FATALITIES), ]
+print(head(orderedFatalities), row.names = FALSE)
+```
+
+#### Which events result in the most injuries?
+The following code aggregates fatalities by event type and sorts based on the number of fatalities.
+```{r}
+injuriesByEvent <- aggregate(INJURIES ~ EVTYPE, data = processedData, FUN = sum)
+orderedInjuries <- injuriesByEvent[order(-injuriesByEvent$INJURIES), ]
+print(head(orderedInjuries), row.names = FALSE)
+```
+#### Which events are the most economically damaging with respect to property and crops?
+#### Which events result in the most property damage?
+The following code aggregates property damage by event type and sorts based on the total cost.
+```{r}
+propCostByEvent <- aggregate(PROPDMGTOTAL ~ EVTYPE, data = processedData, FUN = sum)
+orderedPropCost <- propCostByEvent[order(-propCostByEvent$PROPDMGTOTAL), ]
+print(head(orderedPropCost), row.names = FALSE)
+```
+The following code plots the property costs associated with the 5 event types that cause the greatest property damage. This requires the function ggplot in the package ggplot2.
+```{r}
+library(ggplot2)
+
+output <- ggplot(data = orderedPropCost[1:5, ], aes(x = EVTYPE, y = PROPDMGTOTAL))
+output + geom_bar(stat="identity") + xlab("Event type") + ylab("Economic Damage ($)") + labs(title="Top 5 events causing property damage")
+```
+
+#### Which events result in the most crop damage?
+The following code aggregates property damage by event type and sorts based on the total cost.
+```{r}
+cropCostByEvent <- aggregate(CROPDMGTOTAL ~ EVTYPE, data = processedData, FUN = sum)
+orderedCropCost <- cropCostByEvent[order(-cropCostByEvent$CROPDMGTOTAL), ]
+print(head(orderedCropCost), row.names = FALSE)
+```
+The following code plots the crop costs associated with the 5 event types that cause the greatest crop damage.
+```{r}
+output <- ggplot(data = orderedCropCost[1:5, ], aes(x = EVTYPE, y = CROPDMGTOTAL))
+output + geom_bar(stat="identity") + xlab("Event type") + ylab("Economic Damage ($)") + labs(title="Top 5 events causing crop damage")
+```
+
+#### Which events result in the largest total economic damage?
+The following code sums the total property and crop damage to create the variable ECONDMGTOTAL (unit = dollars). It then aggregates that variable based on event type (EVTYPE).
+```{r}
+processedData$ECONDMGTOTAL <- processedData$PROPDMGTOTAL + processedData$CROPDMGTOTAL
+
+totalCostByEvent <- aggregate(ECONDMGTOTAL ~ EVTYPE, data = processedData, FUN = sum)
+orderedTotalCost <- totalCostByEvent[order(-totalCostByEvent$ECONDMGTOTAL),]
+print(head(orderedTotalCost), row.names = FALSE)
+```
+The following code plots the total economic costs associated with the 5 event types that cause the greatest total economic damage.
+```{r}
+output <- ggplot(data = orderedTotalCost[1:5, ], aes(x = EVTYPE, y = ECONDMGTOTAL))
+output + geom_bar(stat="identity") + xlab("Event type") + ylab("Economic Damage ($)") + labs(title="Top 5 events causing economic damage")
+```
